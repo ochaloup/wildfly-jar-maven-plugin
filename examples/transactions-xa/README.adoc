@@ -1,4 +1,4 @@
-= Postgresql WildFly OpenShift example with XA trasactions testing
+= Postgresql WildFly OpenShift example with XA trasactions
 
 == Bare metal WildFly deployment
 
@@ -30,19 +30,60 @@ cd $JBOSS_HOME
   /subsystem=datasources/xa-data-source=PostgreSQLDS/xa-datasource-properties=PortNumber:add(value=5432),\
   /subsystem=datasources/xa-data-source=PostgreSQLDS/xa-datasource-properties=DatabaseName:add(value=test)"
 ----
+* start the WildFly and use curl to invoke rest endpoints
++
+[source,sh]
+----
+# start WildFly
+cd $JBOSS_HOME
+./bin/standalone.sh
 
-Openshift binary build and deployment
-=====================================
+# run HTTP requests
+curl -XPOST -i http://localhost:8080/transactions-xa-3.0.0.Beta2-SNAPSHOT/tasks/title/name
+curl -XGET -i http://localhost:8080/transactions-xa-3.0.0.Beta2-SNAPSHOT/tasks/id/{id}
+curl -XGET -i http://localhost:8080/transactions-xa-3.0.0.Beta2-SNAPSHOT/tasks/
+# transaction in heuristics (may be checked via jboss cli)
+curl -XPOST -i http://localhost:8080/transactions-xa-3.0.0.Beta2-SNAPSHOT/tasks/title/name-to-fail/fail
+./bin/jboss-cli.sh -c --commands='/subsystem=transactions/log-store=log-store:probe,/subsystem=transactions/log-store=log-store:read-resource(recursive=true, include-runtime=true)'
+----
 
-Create and configure a PostgreSQL data base server:
+== OpenShift WildFly S2I image deployment
 
-```
-oc new-app --name database-server \
-     --env POSTGRESQL_USER=admin \
-     --env POSTGRESQL_PASSWORD=admin \
-     --env POSTGRESQL_DATABASE=sampledb \
-     postgresql
-```
+* Start the PostgreSQL on OpenShift
++
+NOTE: We cannot use the simple `new-app` command as we need to permit XA transactions
+      with `max-prepared-transactions`. The args of command is used for it in PostgreSQL image. +
+      The `new-app` does not provide a way to pass the args.
++
+[source,sh]
+----
+# using username/password as 'admin/admin' with database 'sampledb'
+oc create -f config/postgresql.deployment.yaml
+----
++
+* Configure the WildFly image stream and chain build for OpenShift
++
+[source,sh]
+----
+# Create WildFly build and runtime image streams
+oc create -f config/wildfly-image-stream.json
+# Upload the application build template named wildfly-s2i.
+oc create -f config/wildfly-chain-build-template.json
+----
++
+* Invoke the build
++
+[source,sh]
+----
+# Getting the source to build from GitHub
+oc new-app --template=wildfly-s2i -p IMAGE_STREAM_NAMESPACE=$(oc project -q) \
+  -p APPLICATION_NAME="transactions-xa" \
+  -p SOURCE_REPOSITORY_URL=https://github.com/wildfly-extras/wildfly-jar-maven-plugin/.git \
+  -p SOURCE_REPOSITORY_REF=master -p CONTEXT_DIR=examples/transactions-xa
+----
+
+
+== OpenShift WildFly bootable jar
 
 * mvn package -Popenshift
 * mkdir os && cp target/postgresql-bootable.jar os/
