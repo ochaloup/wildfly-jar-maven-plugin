@@ -30,6 +30,8 @@ public interface TaskDao {
 
     List<Task> getAll(TaskUser user);
 
+    Task get(Long id);
+
     List<Task> getRange(TaskUser user, int offset, int count);
 
     List<Task> getForTitle(TaskUser user, String title);

@@ -24,7 +24,7 @@ import javax.persistence.PersistenceContextType;
 import javax.persistence.TypedQuery;
 
 /**
- * Provides functionality for manipulation with tasks using the persistence context from {@link Resources}.
+ * Provides functionality for manipulation with tasks using the persistence context.
  *
  * @author Lukas Fryc
  * @author Oliver Kiss
@@ -33,30 +33,28 @@ import javax.persistence.TypedQuery;
 @RequestScoped
 public class TaskDaoImpl implements TaskDao {
 
-    @PersistenceContext(type = PersistenceContextType.EXTENDED,unitName = "primary")
+    @PersistenceContext
     private EntityManager em;
 
-    EntityManager getEM() {
-//        if(em == null) {
-//             EntityManagerFactory emf = Persistence.createEntityManagerFactory("primary");
-//             em=emf.createEntityManager();
-//        }
-        return em;
-    }
     @Override
     public void createTask(TaskUser user, Task task) {
-        if (!getEM().contains(user)) {
-            user = getEM().merge(user);
+        if (!em.contains(user)) {
+            user = em.merge(user);
         }
         user.getTasks().add(task);
         task.setOwner(user);
-        getEM().persist(task);
+        em.persist(task);
     }
 
     @Override
     public List<Task> getAll(TaskUser user) {
         TypedQuery<Task> query = querySelectAllTasksFromUser(user);
         return query.getResultList();
+    }
+
+    @Override
+    public Task get(Long id) {
+        return em.find(Task.class, id);
     }
 
     @Override
@@ -70,19 +68,19 @@ public class TaskDaoImpl implements TaskDao {
     @Override
     public List<Task> getForTitle(TaskUser user, String title) {
         String lowerCaseTitle = "%" + title.toLowerCase() + "%";
-        return getEM().createQuery("SELECT t FROM Task t WHERE t.owner = ?1 AND LOWER(t.title) LIKE ?2", Task.class)
+        return em.createQuery("SELECT t FROM Task t WHERE t.owner = ?1 AND LOWER(t.title) LIKE ?2", Task.class)
             .setParameter(1, user).setParameter(2, lowerCaseTitle).getResultList();
     }
 
     @Override
     public void deleteTask(Task task) {
-        if (!getEM().contains(task)) {
-            task = getEM().merge(task);
+        if (!em.contains(task)) {
+            task = em.merge(task);
         }
-        getEM().remove(task);
+        em.remove(task);
     }
 
     private TypedQuery<Task> querySelectAllTasksFromUser(TaskUser user) {
-        return getEM().createQuery("SELECT t FROM Task t WHERE t.owner = ?1", Task.class).setParameter(1, user);
+        return em.createQuery("SELECT t FROM Task t WHERE t.owner = ?1", Task.class).setParameter(1, user);
     }
 }

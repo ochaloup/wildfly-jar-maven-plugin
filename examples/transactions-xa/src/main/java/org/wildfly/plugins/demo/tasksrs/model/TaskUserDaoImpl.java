@@ -24,8 +24,7 @@ import javax.persistence.PersistenceContext;
 import javax.persistence.PersistenceContextType;
 
 /**
- * Provides functionality for manipulation with users using persistence context
- * from {@link Resources}.
+ * Provides functionality for manipulation with users using persistence context.
  *
  * @author Lukas Fryc
  * @author Oliver Kiss
@@ -34,7 +33,7 @@ import javax.persistence.PersistenceContextType;
 @RequestScoped
 public class TaskUserDaoImpl implements TaskUserDao {
 
-    @PersistenceContext(type = PersistenceContextType.EXTENDED, unitName = "primary")
+    @PersistenceContext
     private static EntityManager em;
 
     public TaskUser getForUsername(String username) {

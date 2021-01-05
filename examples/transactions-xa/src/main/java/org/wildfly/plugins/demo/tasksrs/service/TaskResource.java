@@ -19,11 +19,13 @@ package org.wildfly.plugins.demo.tasksrs.service;
 import java.net.URI;
 import java.security.Principal;
 import java.util.List;
+import javax.annotation.Resource;
 import javax.enterprise.context.RequestScoped;
 
 import javax.inject.Inject;
 import javax.transaction.TransactionManager;
 import javax.transaction.UserTransaction;
+import javax.transaction.xa.XAResource;
 import javax.ws.rs.DefaultValue;
 import javax.ws.rs.GET;
 import javax.ws.rs.POST;
@@ -66,6 +68,38 @@ public class TaskResource {
     @Path("tasks/title/{title}")
     public Response createTask(@Context UriInfo info, @Context SecurityContext context,
             @PathParam("title") @DefaultValue("task") String taskTitle) throws Exception {
+        return createTask(info, context, taskTitle, new XAResourceMock());
+    }
+
+    @POST
+    @Path("tasks/title/{title}/fail")
+    public Response createTaskFail(@Context UriInfo info, @Context SecurityContext context,
+                               @PathParam("title") @DefaultValue("task") String taskTitle) throws Exception {
+        return createTask(info, context, taskTitle, new XAResourceMock(XAResourceMock.TestAction.COMMIT_THROW_XAER_RMERR));
+    }
+
+    @GET
+    @Produces({"application/json"})
+    @Path("tasks/id/{id}")
+    public Task getTask(@Context SecurityContext context, @PathParam("id") Long id) {
+        return taskDao.get(id);
+    }
+
+    @GET
+    @Produces({"application/json"})
+    @Path("tasks")
+    public List<Task> getTasks(@Context SecurityContext context) {
+        try {
+            tx.begin();
+            List<Task> tasks = getTasks(getUser(context));
+            tx.commit();
+            return tasks;
+        } catch (Exception ex) {
+            throw new RuntimeException(ex);
+        }
+    }
+
+    private Response createTask(UriInfo info, SecurityContext context, String taskTitle, XAResource xaResource) {
         Task task = null;
         try {
             tx.begin();
@@ -76,7 +110,7 @@ public class TaskResource {
             taskDao.createTask(user, task);
 
             // adding XAResource to start 2PC
-            transactionManager.getTransaction().enlistResource(new XAResourceMock());
+            transactionManager.getTransaction().enlistResource(xaResource);
 
             tx.commit();
         } catch (Exception ex) {
@@ -87,21 +121,6 @@ public class TaskResource {
         URI uri = uriBuilder.build();
 
         return Response.created(uri).build();
-    }
-
-    @GET
-    // JSON: include "application/json" in the @Produces annotation to include json support
-    // @Produces({ "application/xml", "application/json" })
-    @Produces({"application/xml"})
-    public List<Task> getTasks(@Context SecurityContext context) {
-        try {
-            tx.begin();
-            List<Task> tasks = getTasks(getUser(context));
-            tx.commit();
-            return tasks;
-        } catch (Exception ex) {
-            throw new RuntimeException(ex);
-        }
     }
 
     private List<Task> getTasks(TaskUser user) {
