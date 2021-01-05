@@ -1,0 +1,3 @@
+xa-data-source add --name=PostgreSQLDS --driver-name=postgresql --jndi-name=java:jboss/datasources/PostgreSQLDS --user-name=admin --password=admin --xa-datasource-properties=ServerName=postgresql
+/subsystem=datasources/xa-data-source=PostgreSQLDS/xa-datasource-properties=PortNumber:add(value=5432)
+/subsystem=datasources/xa-data-source=PostgreSQLDS/xa-datasource-properties=DatabaseName:add(value=sampledb)

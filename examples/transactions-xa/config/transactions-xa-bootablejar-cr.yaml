@@ -1,0 +1,19 @@
+apiVersion: wildfly.org/v1alpha1
+kind: WildFlyServer
+metadata:
+  name: transactions-xa
+spec:
+  applicationImage: "image-registry.openshift-image-registry.svc:5000/mywfly/transactions-xa:latest"
+  replicas: 1
+  bootableJar: true
+  env:
+    # PostgreSQL env variables can't be used and datasource configuration has to be done by galleon layers
+    # where env variables are viable for normal datasources (env variable like POSTGRESQL_DATASOURCE can be used)
+    # see https://github.com/wildfly-extras/wildfly-datasources-galleon-pack
+    # or separate cli is created and executed at time of bootable jar creation (ie. xa-datasource-openshift.cli referred in pom.xml)
+    #
+    # JDK11 bootable jar needs more metaspace than default
+    - name: GC_MAX_METASPACE_SIZE
+      value: '256'
+    - name: GC_METASPACE_SIZE
+      value: '96'

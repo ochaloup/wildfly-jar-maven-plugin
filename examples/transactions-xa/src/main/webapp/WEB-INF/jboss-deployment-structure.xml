@@ -1,0 +1,11 @@
+<jboss-deployment-structure>
+    <deployment>
+        <dependencies>
+            <module name="org.jboss.jts" slot="main" export="true" meta-inf="export"/>
+            <!-- in dependence of layer used in composition of the bootable jar there are some modules added
+                 for cloud-server the org.jboss.logging is included and is not needed here to be defined explicitly
+            <module name="org.jboss.logging" slot="main" export="true" meta-inf="export"/>
+            -->
+        </dependencies>
+    </deployment>
+</jboss-deployment-structure>

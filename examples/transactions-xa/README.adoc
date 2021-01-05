@@ -1,0 +1,226 @@
+= Postgresql WildFly OpenShift example with XA trasactions
+
+== Bare metal WildFly deployment
+
+* `mvn clean package` creates the `war` file
+* take WildFly runtime and copy the `war` to `$JBOSS_HOME/standalone/deployments`
+* download the PostgreSQL JDBC driver (e.g. from https://jdbc.postgresql.org)
+* [[_start_postgresql_local_]]start PostgreSQL server
++
+[source,sh]
+----
+# a possible way to run PostgreSQL on localhost to test
+docker run -p 5432:5432 --rm  -ePOSTGRES_DB=sampledb -ePOSTGRES_USER=test -ePOSTGRES_PASSWORD=test\
+  postgres:9.4 -c max-prepared-transactions=110 -c log-statement=all
+----
++
+* setup WFLY with driver and with adding the datasource
++
+[source,sh]
+----
+cd $JBOSS_HOME
+# driver installation
+./bin/jboss-cli.sh "embed-server,\
+  module add --name=org.postgresql.jdbc --resources=<path-to-jar>/postgresql.jar --dependencies=javax.api\,javax.transaction.api"
+./bin/jboss-cli.sh "embed-server --server-config=standalone.xml,\
+ /subsystem=datasources/jdbc-driver=postgresql:add(driver-name=postgresql,driver-module-name=org.postgresql.jdbc,driver-xa-datasource-class-name=org.postgresql.xa.PGXADataSource)"
+# adding xa-datasource
+./bin/jboss-cli.sh "embed-server --server-config=standalone.xml,\
+  xa-data-source add --name=PostgreSQLDS --driver-name=postgresql --jndi-name=java:jboss/datasources/PostgreSQLDS --user-name=test --password=test --xa-datasource-properties=ServerName=localhost,\
+  /subsystem=datasources/xa-data-source=PostgreSQLDS/xa-datasource-properties=PortNumber:add(value=5432),\
+  /subsystem=datasources/xa-data-source=PostgreSQLDS/xa-datasource-properties=DatabaseName:add(value=sampledb)"
+----
+* start the WildFly and use curl to invoke rest endpoints
++
+[source,sh]
+----
+# start WildFly
+cd $JBOSS_HOME
+./bin/standalone.sh
+
+# run HTTP requests
+curl -XPOST -i http://localhost:8080/transactions-xa-3.0.0.Beta2-SNAPSHOT/tasks/title/name
+curl -XGET -i http://localhost:8080/transactions-xa-3.0.0.Beta2-SNAPSHOT/tasks/id/{id}
+curl -XGET -i http://localhost:8080/transactions-xa-3.0.0.Beta2-SNAPSHOT/tasks/
+# transaction in heuristics (may be checked via jboss cli)
+curl -XPOST -i http://localhost:8080/transactions-xa-3.0.0.Beta2-SNAPSHOT/tasks/title/name-to-fail/fail
+./bin/jboss-cli.sh -c --commands='/subsystem=transactions/log-store=log-store:probe,/subsystem=transactions/log-store=log-store:read-resource(recursive=true, include-runtime=true)'
+----
+
+== OpenShift WildFly S2I image deployment
+
+* Start the WildFly Operator on OpenShift (see https://github.com/wildfly/wildfly-operator/)
+* [[_start_the_postgresql_]]Start the PostgreSQL on OpenShift
++
+NOTE: We cannot use the simple `new-app` command as we need to permit XA transactions
+      with `max-prepared-transactions`. The args of command is used for it in PostgreSQL image. +
+      The `new-app` does not provide a way to pass the args.
++
+[source,sh]
+----
+# using username/password as 'admin/admin' with database 'sampledb'
+oc create -f config/postgresql.deployment.yaml
+----
++
+* Configure the WildFly image stream
++
+[source,sh]
+----
+# Create WildFly build image streams
+oc create -f https://raw.githubusercontent.com/wildfly/wildfly-s2i/v21.0/imagestreams/wildfly-centos7.json
+----
++
+[NOTE]
+====
+For creating the runtime image it can be defined the runtime image stream
+and process the chain build. It will be like this
+[source,sh]
+----
+# runtime image stream definition
+oc create -f https://raw.githubusercontent.com/wildfly/wildfly-s2i/v21.0/templates/wildfly-runtime-imagestream.yml
+# chain build template definition
+oc create -f https://raw.githubusercontent.com/wildfly/wildfly-s2i/v21.0/templates/wildfly-s2i-chained-build-template.yml
+oc new-app --template wildfly-s2i-chained-build-template -p IMAGE_STREAM_NAMESPACE=$(oc project -q) \
+  -p APPLICATION_NAME="transactions-xa" \
+  -p SOURCE_REPOSITORY_URL=https://github.com/wildfly-extras/wildfly-jar-maven-plugin/.git \
+  -p SOURCE_REPOSITORY_REF=master -p CONTEXT_DIR=examples/transactions-xa
+----
+====
++
+* Build `war` on the local machine and build the s2i image on OpenShift
++
+[source,sh]
+----
+# build the quickstart
+mvn clean install -Dno-bootable-jar
+# prepare the war artifact to an empty directory to upload it with binary build
+mkdir target/openshift
+cp target/transactions-xa*.war target/openshift
+# define binary build which creates ImageStream and BuildConfig at OpenShift
+oc new-build --strategy source --binary --image-stream wildfly --name transactions-xa
+# starts build by pushing the war archive content to the ImageStream
+## a Build object will be created and Pod running the build will be started
+oc start-build transactions-xa --from-dir target/openshift
+----
++
+* Deploy WildFly server definition to be picked by WildFly Operator
++
+[source,sh]
+----
+# adjusting the namespace/project in the template where the image is searched at
+sed -i "s/mywfly/$(oc project -q)/" config/transactions-xa-wildfly-cr.yaml
+# upload the WildFly server definition to be picked by WildFly Operator
+oc create -f config/transactions-xa-wildfly-cr.yaml
+
+# to verify the xml setup
+oc rsh transactions-xa-0 /opt/wildfly/bin/jboss-cli.sh -c --command=':read-config-as-xml'
+----
++
+[NOTE]
+====
+To avoid clustering error on running the Pod (error type
+`.. failed getting JSON response from Kubernetes ... java.io.IOException: Server returned HTTP response code: 403 for URL: https://172.25.0.1:443/api/v1/namespaces/mywfly/pods?labelSelector= ...`)
+the Pod needs to have permissions to view labels in the namespace. Quick fix is to execute
+[source,sh]
+----
+oc policy add-role-to-user view system:serviceaccount:$(oc project -q):default -n $(oc project -q)
+----
+====
++
+* Verification on running application
++
+[source,sh]
+----
+# call the REST endpoint running on OpenShift
+curl -i -XGET $(oc get route transactions-xa-route --template='{{ .spec.host }}')/transactions-xa/tasks
+----
++
+* Scale-up and scale-down the WildFlyServer object in Operator spec
++
+[source,sh]
+----
+oc patch wildflyserver transactions-xa \
+  -p '[{"op":"replace", "path":"/spec/replicas", "value":3}]' --type json
+----
+
+
+== OpenShift WildFly bootable jar
+
+* Start the WildFly Operator on OpenShift (see https://github.com/wildfly/wildfly-operator/)
+* <<_start_the_postgresql_, Start the PostgreSQL>> on OpenShift
+* * Import the bare OpenJDK 11 image to run the Java application (ie. bootable jar)
++
+[source,sh]
+----
+oc import-image ubi8/openjdk-11 --from=registry.redhat.io/ubi8/openjdk-11 --confirm
+----
++
+* Build bootable jar with WildFly server embedded on the local machine
++
+[source,sh]
+----
+mvn clean install -Popenshift
+----
++
+[NOTE]
+====
+Running the bootable jar on a local machine is to define env variable for PostgreSQL and run it.
+First <<_start_postgresql_local_,Start the PostgreSQL on a local machine>>.
+Launch the bootable jar
+[source,sh]
+----
+# when using the layer postgresql-datasource then env variable are used to define attributes
+POSTGRESQL_SERVICE_HOST=localhost POSTGRESQL_SERVICE_PORT=5432 POSTGRESQL_DATABASE=sampledb \
+  POSTGRESQL_USER=test POSTGRESQL_PASSWORD=test \
+  java -jar target/transactions-xa-bootable.jar
+
+# when using the layer postgresql-driver and xa-datasource is defined by cli via <cli-session> xml tag
+# the data dir where Narayana transaction log store is configured is used here
+java -jar target/transactions-xa-bootable.jar -Djboss.server.data.dir=/opt/jboss/data
+----
+Verify with `curl` HTTP call
+[source,sh]
+----
+curl -XGET -i http://localhost:8080/tasks/
+curl -XPOST -i http://localhost:8080/tasks/title/name-to-fail/fail
+----
+====
++
+* Prepare bootable jar to the directory for being taken to OpenShift
++
+[source,sh]
+----
+# prepare the jar artifact to an empty directory to upload it with binary build
+mkdir target/openshift
+cp target/transactions-xa-bootable.jar target/openshift
+----
++
+* Create the image stream (`new-build`) and build it (`start-build`)
++
+[source,sh]
+----
+oc import-image ubi8/openjdk-11 --from=registry.redhat.io/ubi8/openjdk-11 --confirm
+oc new-build --strategy source --binary --image-stream openjdk-11 --name transactions-xa
+oc start-build transactions-xa --from-dir ./target/openshift/
+----
++
+* Deploy WildFly server definition to be picked by WildFly Operator
++
+[source,sh]
+----
+# adjusting the namespace/project in the template where the image is searched at
+sed -i "s/mywfly/$(oc project -q)/" config/transactions-xa-wildfly-cr.yaml
+# deploy customer resource definition to be picked by WildFly Operator
+oc create -f config/transactions-xa-bootablejar-cr.yaml
+
+# REST endpoing call
+curl -i -XGET $(oc get route transactions-xa-route --template='{{ .spec.host }}')/tasks
+# REST with XA Failure
+curl -i -XPOST $(oc get route transactions-xa-route --template='{{ .spec.host }}')/tasks/title/failure-title/fail
+
+# XA data verification
+oc rsh transactions-xa-0  /opt/jboss/container/wildfly-bootable-jar-server/bin/jboss-cli.sh -c\
+  '/subsystem=transactions/log-store=log-store:probe'
+oc rsh transactions-xa-0  /opt/jboss/container/wildfly-bootable-jar-server/bin/jboss-cli.sh -c\
+  '/subsystem=transactions/log-store=log-store:read-resource(recursive=true,include-runtime=true)'
+----
