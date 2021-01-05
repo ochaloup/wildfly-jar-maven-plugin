@@ -2,6 +2,7 @@ package org.wildfly.plugins.demo.mock;
 
 import java.io.Serializable;
 import java.util.Collection;
+import java.util.Vector;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -13,13 +14,14 @@ import com.arjuna.ats.arjuna.recovery.RecoveryManager;
 import com.arjuna.ats.arjuna.recovery.RecoveryModule;
 import com.arjuna.ats.internal.jta.recovery.arjunacore.XARecoveryModule;
 import com.arjuna.ats.jta.recovery.XAResourceRecoveryHelper;
+import org.jboss.logging.Logger;
 
 /**
  * Mock {@link XAResource} which can be used for enlisting it to a transaction
  * and asking two-phase commit to be run.
  *
  * Reason of existence:
- * A transaction normally uses 1PC optimization when only one resource (e.g. only database perist)
+ * A transaction normally uses 1PC optimization when only one resource (e.g. only database persist)
  * is part of the transaction. When 1PC optimization is used then only XA commit call is invoked.
  * For transaction recovery could be verified we need 2PC which is usually used with two and more
  * enlisted resources.
@@ -32,19 +34,23 @@ import com.arjuna.ats.jta.recovery.XAResourceRecoveryHelper;
  */
 public class XAResourceMock implements XAResource, Serializable {
     private static final long serialVersionUID = 1L;
-    private static Logger log = Logger.getLogger(MockXAResource.class);
+    private static final Logger log = Logger.getLogger(XAResourceMock.class);
 
     private static final Collection<Xid> preparedXids = ConcurrentHashMap.newKeySet();
     private static final AtomicInteger commitCount = new AtomicInteger();
 
-    /**
+    /*
      * This is a Narayana initialization of periodic recovery processing for the {@link MockXAResource}.
      * The recovery helper ensures that the {@link XAResource} may be processed
      * and ensures transactional safety when transaction processing failure happens.
      */
     static {
-        XAResourceMock.MockXAResourceRecoveryHelper.getRecoveryModule()
-                .addXAResourceRecoveryHelper(MockXAResourceRecoveryHelper.INSTANCE);
+        XARecoveryModule xaRecoveryModule = XAResourceMock.MockXAResourceRecoveryHelper.getRecoveryModule();
+        if (xaRecoveryModule != null) {
+            xaRecoveryModule.addXAResourceRecoveryHelper(MockXAResourceRecoveryHelper.INSTANCE);
+        } else {
+            log.warnf("Cannot get XARecoveryModule. It's probably not initialized by runtime.");
+        }
     }
 
     public enum TestAction {
@@ -57,11 +63,11 @@ public class XAResourceMock implements XAResource, Serializable {
     protected TestAction testAction;
     private int transactionTimeout;
 
-    public MockXAResource() {
+    public XAResourceMock() {
         this(TestAction.NONE);
     }
 
-    public MockXAResource(TestAction testAction) {
+    public XAResourceMock(TestAction testAction) {
         log.debugf("Creating %s with test action %s", this, testAction);
         this.testAction = testAction;
     }
@@ -112,14 +118,13 @@ public class XAResourceMock implements XAResource, Serializable {
                 preparedXids.remove(xid);
         }
 
-        log.tracef("Number of succesful commit for MockXAResource is: %d",
+        log.tracef("Number of successful commit for MockXAResource is: %d",
                 commitCount.incrementAndGet());
     }
 
     @Override
     public void start(Xid xid, int flags) throws XAException {
         log.debugf("start '%s' xid: [%s], flags: %s", this, xid, flags);
-        // currentXid = xid;
     }
 
     @Override
@@ -148,7 +153,7 @@ public class XAResourceMock implements XAResource, Serializable {
     @Override
     public Xid[] recover(int flag) throws XAException {
         log.debugf("recover '%s' with flags: %s, returning list of xids '%s'", this, flag, preparedXids);
-        return preparedXids.toArray(new Xid[preparedXids.size()]);
+        return preparedXids.toArray(new Xid[0]);
     }
 
     @Override
@@ -165,7 +170,7 @@ public class XAResourceMock implements XAResource, Serializable {
     }
 
     /**
-     * Returns number of successfully committed {@link MockXAResource}s.
+     * Returns number of successfully committed {@link XAResourceMock}s.
      *
      * @return number of committed.
      */

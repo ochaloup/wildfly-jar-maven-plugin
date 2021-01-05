@@ -14,6 +14,10 @@
     <name>WildFly Bootable JAR - PostgreSQL + XAResource</name>
     <description>An example of a JAX-RS application with a PostgreSQL and XA resource to see working XA transactions</description>
 
+    <properties>
+        <version.narayana>5.10.6.Final</version.narayana>
+    </properties>
+
     <dependencies>
         <dependency>
             <groupId>jakarta.platform</groupId>
@@ -32,56 +36,64 @@
         <dependency>
             <groupId>org.jboss.logging</groupId>
             <artifactId>jboss-logging</artifactId>
-            <version>3.4.1.Final</version>
             <scope>provided</scope>
         </dependency>
         <!-- for Mock XAResource recovery we need the dependency to Narayana -->
         <dependency>
             <groupId>org.jboss.narayana.jts</groupId>
             <artifactId>narayana-jts-idlj</artifactId>
+            <version>${version.narayana}</version>
             <scope>provided</scope>
         </dependency>
     </dependencies>
 
-    <build>
-        <finalName>${project.artifactId}</finalName>
-        <plugins>
-            <plugin>
-                <groupId>org.wildfly.plugins</groupId>
-                <artifactId>wildfly-jar-maven-plugin</artifactId>
-                <configuration>
-                    <feature-packs>
-                        <feature-pack>
-                            <location>wildfly@maven(org.jboss.universe:community-universe)#${version.wildfly}</location>
-                        </feature-pack>
-                        <feature-pack>
-                            <groupId>org.wildfly</groupId>
-                            <artifactId>wildfly-datasources-galleon-pack</artifactId>
-                            <version>1.1.0.Final</version>
-                        </feature-pack>
-                    </feature-packs>
-                    <layers>
-                        <layer>cloud-profile</layer>
-                        <layer>postgresql-datasource</layer>
-                    </layers>
-                    <excluded-layers>
-                        <layer>deployment-scanner</layer>
-                    </excluded-layers>
-                    <plugin-options>
-                        <jboss-fork-embedded>${plugin.fork.embedded}</jboss-fork-embedded>
-                    </plugin-options>
-                </configuration>
-                <executions>
-                    <execution>
-                        <goals>
-                            <goal>package</goal>
-                        </goals>
-                    </execution>
-                </executions>
-            </plugin>
-        </plugins>
-    </build>
     <profiles>
+        <profile>
+            <id>bootable-jar</id>
+            <activation>
+                <property>
+                    <name>!no-bootable-jar</name>
+                </property>
+            </activation>
+            <build>
+                <finalName>${project.artifactId}</finalName>
+                <plugins>
+                    <plugin>
+                        <groupId>org.wildfly.plugins</groupId>
+                        <artifactId>wildfly-jar-maven-plugin</artifactId>
+                        <configuration>
+                            <feature-packs>
+                                <feature-pack>
+                                    <location>wildfly@maven(org.jboss.universe:community-universe)#${version.wildfly}</location>
+                                </feature-pack>
+                                <feature-pack>
+                                    <groupId>org.wildfly</groupId>
+                                    <artifactId>wildfly-datasources-galleon-pack</artifactId>
+                                    <version>1.1.0.Final</version>
+                                </feature-pack>
+                            </feature-packs>
+                            <layers>
+                                <layer>cloud-profile</layer>
+                                <layer>postgresql-datasource</layer>
+                            </layers>
+                            <excluded-layers>
+                                <layer>deployment-scanner</layer>
+                            </excluded-layers>
+                            <plugin-options>
+                                <jboss-fork-embedded>${plugin.fork.embedded}</jboss-fork-embedded>
+                            </plugin-options>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <goals>
+                                    <goal>package</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
         <profile>
             <id>openshift</id>
             <build>

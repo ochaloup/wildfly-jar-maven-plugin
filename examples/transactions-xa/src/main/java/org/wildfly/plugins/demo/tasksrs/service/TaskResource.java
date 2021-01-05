@@ -37,6 +37,7 @@ import javax.ws.rs.core.SecurityContext;
 import javax.ws.rs.core.UriBuilder;
 import javax.ws.rs.core.UriInfo;
 
+import org.wildfly.plugins.demo.mock.XAResourceMock;
 import org.wildfly.plugins.demo.tasksrs.model.Task;
 import org.wildfly.plugins.demo.tasksrs.model.TaskDaoImpl;
 import org.wildfly.plugins.demo.tasksrs.model.TaskUser;
@@ -68,15 +69,20 @@ public class TaskResource {
         Task task = null;
         try {
             tx.begin();
+
+            // saving data to database
             TaskUser user = getUser(context);
             task = new Task(taskTitle);
-
             taskDao.createTask(user, task);
+
+            // adding XAResource to start 2PC
+            transactionManager.getTransaction().enlistResource(new XAResourceMock());
+
             tx.commit();
         } catch (Exception ex) {
             throw new RuntimeException(ex);
         }
-        String rawPath = info.getAbsolutePath().getRawPath().replace("title/" + task.getTitle(), "id/" + task.getId().toString());
+        String rawPath = info.getAbsolutePath().getRawPath().replace("title/" + taskTitle, "id/" + task.getId().toString());
         UriBuilder uriBuilder = info.getAbsolutePathBuilder().replacePath(rawPath);
         URI uri = uriBuilder.build();
 
