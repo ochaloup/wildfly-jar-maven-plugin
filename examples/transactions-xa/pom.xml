@@ -27,6 +27,20 @@
             <artifactId>jboss-jaxb-api_2.3_spec</artifactId>
             <scope>provided</scope>
         </dependency>
+
+        <!-- Import logging by JBoss -->
+        <dependency>
+            <groupId>org.jboss.logging</groupId>
+            <artifactId>jboss-logging</artifactId>
+            <version>3.4.1.Final</version>
+            <scope>provided</scope>
+        </dependency>
+        <!-- for Mock XAResource recovery we need the dependency to Narayana -->
+        <dependency>
+            <groupId>org.jboss.narayana.jts</groupId>
+            <artifactId>narayana-jts-idlj</artifactId>
+            <scope>provided</scope>
+        </dependency>
     </dependencies>
 
     <build>

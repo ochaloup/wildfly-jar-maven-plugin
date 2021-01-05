@@ -22,6 +22,7 @@ import java.util.List;
 import javax.enterprise.context.RequestScoped;
 
 import javax.inject.Inject;
+import javax.transaction.TransactionManager;
 import javax.transaction.UserTransaction;
 import javax.ws.rs.DefaultValue;
 import javax.ws.rs.GET;
