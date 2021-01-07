@@ -5,12 +5,12 @@
 * `mvn clean package` creates the `war` file
 * take WildFly runtime and copy the `war` to `$JBOSS_HOME/standalone/deployments`
 * download the PostgreSQL JDBC driver (e.g. from https://jdbc.postgresql.org)
-* start PostgreSQL server
+* [[_start_postgresql_local_]]start PostgreSQL server
 +
 [source,sh]
 ----
 # a possible way to run PostgreSQL on localhost to test
-docker run -p 5432:5432 --rm  -ePOSTGRES_DB=test -ePOSTGRES_USER=test -ePOSTGRES_PASSWORD=test\
+docker run -p 5432:5432 --rm  -ePOSTGRES_DB=sampledb -ePOSTGRES_USER=test -ePOSTGRES_PASSWORD=test\
   postgres:9.4 -c max-prepared-transactions=110 -c log-statement=all
 ----
 +
@@ -28,7 +28,7 @@ cd $JBOSS_HOME
 ./bin/jboss-cli.sh "embed-server --server-config=standalone.xml,\
   xa-data-source add --name=PostgreSQLDS --driver-name=postgresql --jndi-name=java:jboss/datasources/PostgreSQLDS --user-name=test --password=test --xa-datasource-properties=ServerName=localhost,\
   /subsystem=datasources/xa-data-source=PostgreSQLDS/xa-datasource-properties=PortNumber:add(value=5432),\
-  /subsystem=datasources/xa-data-source=PostgreSQLDS/xa-datasource-properties=DatabaseName:add(value=test)"
+  /subsystem=datasources/xa-data-source=PostgreSQLDS/xa-datasource-properties=DatabaseName:add(value=sampledb)"
 ----
 * start the WildFly and use curl to invoke rest endpoints
 +
@@ -91,9 +91,11 @@ oc new-app --template wildfly-s2i-chained-build-template -p IMAGE_STREAM_NAMESPA
 +
 [source,sh]
 ----
+# build the quickstart
+mvn clean install -Dno-bootable-jar
 # prepare the war artifact to an empty directory to upload it with binary build
-mkdir examples/transactions-xa/target/openshift
-cp examples/transactions-xa/target/transactions-xa*.war examples/transactions-xa/target/openshift
+mkdir target/openshift
+cp target/transactions-xa*.war target/openshift
 # define binary build which creates ImageStream and BuildConfig at OpenShift
 oc new-build --strategy source --binary --image-stream wildfly --name transactions-xa
 # starts build by pushing the war archive content to the ImageStream
@@ -151,7 +153,25 @@ oc import-image ubi8/openjdk-11 --from=registry.redhat.io/ubi8/openjdk-11 --conf
 +
 [source,sh]
 ----
-mvn package -Popenshift
+mvn clean package -Popenshift
+----
++
+[NOTE]
+====
+Running the bootable jar on local machine is to define env variable for PostgreSQL and run it.
+First <<_start_postgresql_local_,Start the PostgreSQL on local machine>>.
+Launch the bootable jar
+[source,sh]
+----
+POSTGRESQL_SERVICE_HOST=localhost POSTGRESQL_SERVICE_PORT=5432 POSTGRESQL_DATABASE=sampledb \
+POSTGRESQL_USER=test POSTGRESQL_PASSWORD=test \
+java -jar target/transactions-xa-bootable.jar
+----
+====
++
+* Prepare bootable jar to the directory for being taken to OpenShift
+[source,sh]
+----
 # prepare the jar artifact to an empty directory to upload it with binary build
 mkdir target/openshift
 cp target/postgresql-bootable.jar target/openshift
