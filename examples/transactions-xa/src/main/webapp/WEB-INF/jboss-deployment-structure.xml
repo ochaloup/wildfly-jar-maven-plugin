@@ -2,6 +2,8 @@
     <deployment>
         <dependencies>
             <module name="org.jboss.jts" slot="main" export="true" meta-inf="export"/>
+            <!-- this needs to be specified for bootable jar otherwise we fail -->
+            <module name="org.jboss.logging" slot="main" export="true" meta-inf="export"/>
         </dependencies>
     </deployment>
 </jboss-deployment-structure>

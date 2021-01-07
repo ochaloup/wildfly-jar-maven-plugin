@@ -16,6 +16,7 @@
 
     <properties>
         <version.narayana>5.10.6.Final</version.narayana>
+        <!--  <version.jboss.logging>3.4.1.Final</version.jboss.logging> -->
     </properties>
 
     <dependencies>

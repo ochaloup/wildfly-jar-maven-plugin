@@ -167,6 +167,11 @@ POSTGRESQL_SERVICE_HOST=localhost POSTGRESQL_SERVICE_PORT=5432 POSTGRESQL_DATABA
 POSTGRESQL_USER=test POSTGRESQL_PASSWORD=test \
 java -jar target/transactions-xa-bootable.jar
 ----
+Verify with `curl` HTTP call
+[source,sh]
+----
+curl -XGET -i http://localhost:8080/tasks/
+----
 ====
 +
 * Prepare bootable jar to the directory for being taken to OpenShift
