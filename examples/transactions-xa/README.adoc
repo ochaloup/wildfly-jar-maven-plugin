@@ -49,7 +49,8 @@ curl -XPOST -i http://localhost:8080/transactions-xa-3.0.0.Beta2-SNAPSHOT/tasks/
 
 == OpenShift WildFly S2I image deployment
 
-* Start the PostgreSQL on OpenShift
+* Start the WildFly Operator on OpenShift (see https://github.com/wildfly/wildfly-operator/)
+* [[_start_the_postgresql_]]Start the PostgreSQL on OpenShift
 +
 NOTE: We cannot use the simple `new-app` command as we need to permit XA transactions
       with `max-prepared-transactions`. The args of command is used for it in PostgreSQL image. +
@@ -61,55 +62,122 @@ NOTE: We cannot use the simple `new-app` command as we need to permit XA transac
 oc create -f config/postgresql.deployment.yaml
 ----
 +
-* Configure the WildFly image stream and chain build for OpenShift
+* Configure the WildFly image stream
 +
 [source,sh]
 ----
-# Create WildFly build and runtime image streams
-oc create -f config/wildfly-image-stream.json
-# Upload the application build template named wildfly-s2i.
-oc create -f config/wildfly-chain-build-template.json
+# Create WildFly build image streams
+oc create -f https://raw.githubusercontent.com/wildfly/wildfly-s2i/v21.0/imagestreams/wildfly-centos7.json
 ----
 +
-* Invoke the build
-+
+[NOTE]
+====
+For creating the runtime image it can be defined the runtime image stream
+and process the chain build. It will be like this
 [source,sh]
 ----
-# Getting the source to build from GitHub
-oc new-app --template=wildfly-s2i -p IMAGE_STREAM_NAMESPACE=$(oc project -q) \
+# runtime image stream definition
+oc create -f https://raw.githubusercontent.com/wildfly/wildfly-s2i/v21.0/templates/wildfly-runtime-imagestream.yml
+# chain build template definition
+oc create -f https://raw.githubusercontent.com/wildfly/wildfly-s2i/v21.0/templates/wildfly-s2i-chained-build-template.yml
+oc new-app --template wildfly-s2i-chained-build-template -p IMAGE_STREAM_NAMESPACE=$(oc project -q) \
   -p APPLICATION_NAME="transactions-xa" \
   -p SOURCE_REPOSITORY_URL=https://github.com/wildfly-extras/wildfly-jar-maven-plugin/.git \
   -p SOURCE_REPOSITORY_REF=master -p CONTEXT_DIR=examples/transactions-xa
+----
+====
++
+* Build `war` on the local machine and build the s2i image on OpenShift
++
+[source,sh]
+----
+# prepare the war artifact to an empty directory to upload it with binary build
+mkdir examples/transactions-xa/target/openshift
+cp examples/transactions-xa/target/transactions-xa*.war examples/transactions-xa/target/openshift
+# define binary build which creates ImageStream and BuildConfig at OpenShift
+oc new-build --strategy source --binary --image-stream wildfly --name transactions-xa
+# starts build by pushing the war archive content to the ImageStream
+## a Build object will be created and Pod running the build will be started
+oc start-build transactions-xa --from-dir examples/transactions-xa/target/openshift
+----
++
+* Deploy WildFly server definition to be picked by WildFly Operator
++
+[source,sh]
+----
+oc create -f examples/transactions-xa/config/transactions-xa-cr.yaml
+----
++
+[NOTE]
+====
+To avoid clustering error on running the Pod (error type
+`.. failed getting JSON response from Kubernetes ... java.io.IOException: Server returned HTTP response code: 403 for URL: https://172.25.0.1:443/api/v1/namespaces/mywfly/pods?labelSelector= ...`)
+the Pod needs to have permissions to view labels in the namespace. Quick fix is to execute
+[source,sh]
+----
+oc policy add-role-to-user view system:serviceaccount:$(oc project -q):default -n $(oc project -q)
+----
+====
++
+* Verification on running application
++
+[source,sh]
+----
+# call the REST endpoint running on OpenShift
+curl -i -XGET $(oc get route transactions-xa-route --template='{{ .spec.host }}')/transactions-xa/tasks
+----
++
+* Scale-up and scale-down the WildFlyServer object in Operator spec
++
+[source,sh]
+----
+oc patch wildflyserver transactions-xa -p '[{"op":"replace", "path":"/spec/replicas", "value":3}]' \
+  --type json
 ----
 
 
 == OpenShift WildFly bootable jar
 
-* mvn package -Popenshift
-* mkdir os && cp target/postgresql-bootable.jar os/
-* Import the OpenJDK 11 image to run the Java application, create the image stream and deployment:
-```
+* Start the WildFly Operator on OpenShift (see https://github.com/wildfly/wildfly-operator/)
+* <<_start_the_postgresql_, Start the PostgreSQL>> on OpenShift
+* * Import the bare OpenJDK 11 image to run the Java application (ie. bootable jar)
++
+[source,sh]
+----
 oc import-image ubi8/openjdk-11 --from=registry.redhat.io/ubi8/openjdk-11 --confirm
-
+----
++
+* Build bootable jar with WildFly server embedded on the local machine
++
+[source,sh]
+----
+mvn package -Popenshift
+# prepare the jar artifact to an empty directory to upload it with binary build
+mkdir target/openshift
+cp target/postgresql-bootable.jar target/openshift
+----
++
+* Create the image stream (`new-build`) and build it (`start-build`)
++
+[source,sh]
+----
 oc new-build --strategy source --binary --image-stream openjdk-11 --name wf-postgresql
-
 oc start-build wf-postgresql --from-dir ./os/
+----
++
+* Deploy WildFly server definition to be picked by WildFly Operator
++
+[source,sh]
+----
+oc create -f examples/transactions-xa/config/transactions-xa-cr.yaml
+----
 
-oc new-app --name wf-postgresql-app \
-    --env POSTGRESQL_USER=admin \
-    --env POSTGRESQL_PASSWORD=admin \
-    --env POSTGRESQL_SERVICE_HOST=database-server \
-    --env POSTGRESQL_SERVICE_PORT=5432 \
-    --env POSTGRESQL_DATABASE=sampledb \
-    --env GC_MAX_METASPACE_SIZE=256 \
-    --env GC_METASPACE_SIZE=96 \
-    wf-postgresql
-
-oc expose svc/wf-postgresql-app
-```
-* Add a new task:
-```
-curl -X POST http://$(oc get route wf-postgresql-app --template='{{ .spec.host }}')/tasks/title/foo`
-
-* Get all the tasks:
-`curl http://$(oc get route wf-postgresql-app --template='{{ .spec.host }}')`
+//oc new-app --name wf-postgresql-app \
+//    --env POSTGRESQL_USER=admin \
+//    --env POSTGRESQL_PASSWORD=admin \
+//    --env POSTGRESQL_SERVICE_HOST=database-server \
+//    --env POSTGRESQL_SERVICE_PORT=5432 \
+//    --env POSTGRESQL_DATABASE=sampledb \
+//    --env GC_MAX_METASPACE_SIZE=256 \
+//    --env GC_METASPACE_SIZE=96 \
+//    wf-postgresql
