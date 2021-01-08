@@ -133,8 +133,8 @@ curl -i -XGET $(oc get route transactions-xa-route --template='{{ .spec.host }}'
 +
 [source,sh]
 ----
-oc patch wildflyserver transactions-xa -p '[{"op":"replace", "path":"/spec/replicas", "value":3}]' \
-  --type json
+oc patch wildflyserver transactions-xa \
+  -p '[{"op":"replace", "path":"/spec/replicas", "value":3}]' --type json
 ----
 
 
@@ -175,19 +175,21 @@ curl -XGET -i http://localhost:8080/tasks/
 ====
 +
 * Prepare bootable jar to the directory for being taken to OpenShift
++
 [source,sh]
 ----
 # prepare the jar artifact to an empty directory to upload it with binary build
 mkdir target/openshift
-cp target/postgresql-bootable.jar target/openshift
+cp target/transactions-xa-bootable.jar target/openshift
 ----
 +
 * Create the image stream (`new-build`) and build it (`start-build`)
 +
 [source,sh]
 ----
-oc new-build --strategy source --binary --image-stream openjdk-11 --name wf-postgresql
-oc start-build wf-postgresql --from-dir ./os/
+oc import-image ubi8/openjdk-11 --from=registry.redhat.io/ubi8/openjdk-11 --confirm
+oc new-build --strategy source --binary --image-stream openjdk-11 --name transactions-xa
+oc start-build transactions-xa --from-dir ./target/openshift/
 ----
 +
 * Deploy WildFly server definition to be picked by WildFly Operator
@@ -196,13 +198,3 @@ oc start-build wf-postgresql --from-dir ./os/
 ----
 oc create -f examples/transactions-xa/config/transactions-xa-cr.yaml
 ----
-
-//oc new-app --name wf-postgresql-app \
-//    --env POSTGRESQL_USER=admin \
-//    --env POSTGRESQL_PASSWORD=admin \
-//    --env POSTGRESQL_SERVICE_HOST=database-server \
-//    --env POSTGRESQL_SERVICE_PORT=5432 \
-//    --env POSTGRESQL_DATABASE=sampledb \
-//    --env GC_MAX_METASPACE_SIZE=256 \
-//    --env GC_METASPACE_SIZE=96 \
-//    wf-postgresql

@@ -5,6 +5,7 @@ metadata:
 spec:
   applicationImage: "image-registry.openshift-image-registry.svc:5000/mywfly/transactions-xa:latest"
   replicas: 1
+  bootableJar: true
   env:
     - name: POSTGRESQL_DATASOURCE
       value: PostgreSQLDS
@@ -27,3 +28,8 @@ spec:
         secretKeyRef:
           name: postgresql
           key: password
+    # jdk11 bootable jar needs more metaspace than default
+    - name: GC_MAX_METASPACE_SIZE
+      value: '256'
+    - name: GC_METASPACE_SIZE
+      value: '96'
